@@ -18,11 +18,6 @@ End-to-end pipeline that transcribes a provider's medical dictation and converts
 | Structured SOAP note (JSON) | [`output/soap_note.json`](output/soap_note.json) |
 | Rendered SOAP note (Markdown) | [`output/soap_note.md`](output/soap_note.md) |
 | Executed walkthrough notebook | [`medical_transcription_soap.ipynb`](medical_transcription_soap.ipynb) |
-| Verbatim ASR output (before terminology cleanup) | [`output/transcript_raw.txt`](output/transcript_raw.txt) |
-| Final transcript used for structuring | [`output/transcript.txt`](output/transcript.txt) |
-| Structured SOAP note (JSON) | [`output/soap_note.json`](output/soap_note.json) |
-| Rendered SOAP note (Markdown) | [`output/soap_note.md`](output/soap_note.md) |
-| Executed walkthrough notebook | [`medical_transcription_soap.ipynb`](medical_transcription_soap.ipynb) |
 
 The encounter is a telehealth visit for several months of right lateral elbow pain, worse with repetitive wrist extension/line work, with point tenderness over the lateral epicondyle and pain on wrist extension/flexion. The note concludes **lateral epicondylitis (tennis elbow)** and documents conservative management.
 
