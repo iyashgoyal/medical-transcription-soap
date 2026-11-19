@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1450" viewBox="0 0 1240 1450" role="img" aria-label="Medical transcription and SOAP note pipeline architecture">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#000000" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f5b9e"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", Arial, Helvetica, sans-serif; }
+      .title { font-weight: 700; fill: #1f3550; }
+      .body { fill: #4a4a4a; }
+      .caption { fill: #6b7a8c; }
+    </style>
+  </defs>
+
+  <rect width="1240" height="1450" fill="#ffffff"/>
+
+  <!-- Audio input -->
+  <g filter="url(#shadow)">
+    <rect x="230" y="22" width="780" height="96" rx="18" fill="#eef4fa" stroke="#2f5b9e" stroke-width="3"/>
+  </g>
+  <g stroke="#1f3550" stroke-width="7" stroke-linecap="round">
+    <line x1="284" y1="60" x2="284" y2="80"/>
+    <line x1="302" y1="48" x2="302" y2="92"/>
+    <line x1="320" y1="36" x2="320" y2="104"/>
+    <line x1="338" y1="50" x2="338" y2="90"/>
+    <line x1="356" y1="62" x2="356" y2="78"/>
+  </g>
+  <text x="390" y="79" font-size="30" class="title">audio/sample_dictation.mp3</text>
+
+  <!-- Arrow -->
+  <line x1="620" y1="118" x2="620" y2="170" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- Part A -->
+  <g filter="url(#shadow)">
+    <rect x="160" y="190" width="920" height="250" rx="18" fill="#eaf3fc" stroke="#2f5b9e" stroke-width="3"/>
+  </g>
+  <path d="M178 190 H1062 A18 18 0 0 1 1080 208 V256 H160 V208 A18 18 0 0 1 178 190 Z" fill="#2f5b9e"/>
+  <text x="620" y="233" text-anchor="middle" font-size="36" font-weight="700" fill="#ffffff">Part A: Speech-to-text</text>
+
+  <!-- Laptop illustration -->
+  <rect x="236" y="286" width="112" height="70" rx="7" fill="none" stroke="#2f5b9e" stroke-width="6"/>
+  <g stroke="#2f5b9e" stroke-width="4" stroke-linecap="round">
+    <line x1="256" y1="311" x2="256" y2="331"/>
+    <line x1="270" y1="301" x2="270" y2="341"/>
+    <line x1="284" y1="293" x2="284" y2="349"/>
+    <line x1="298" y1="303" x2="298" y2="339"/>
+    <line x1="312" y1="312" x2="312" y2="330"/>
+  </g>
+  <rect x="214" y="364" width="156" height="12" rx="6" fill="#2f5b9e"/>
+  <rect x="302" y="360" width="92" height="38" rx="19" fill="#2f5b9e"/>
+  <text x="348" y="387" text-anchor="middle" font-size="22" font-weight="700" fill="#ffffff">Local</text>
+
+  <!-- Divider -->
+  <line x1="420" y1="278" x2="420" y2="414" stroke="#2f5b9e" stroke-width="2"/>
+
+  <!-- Part A list -->
+  <text x="452" y="311" font-size="30" font-weight="700" fill="#1f3550">1.</text>
+  <text x="500" y="311" font-size="30" font-weight="700" fill="#1f3550">faster-whisper (local, preferred)</text>
+  <text x="500" y="350" font-size="24" class="caption">no audio leaves the machine</text>
+
+  <text x="452" y="395" font-size="30" font-weight="700" fill="#1f3550">2.</text>
+  <text x="500" y="395" font-size="30" font-weight="700" fill="#1f3550">Gemini audio API (fallback)</text>
+  <text x="500" y="433" font-size="24" class="caption">CPU-only / no model download</text>
+
+  <!-- Arrow -->
+  <line x1="620" y1="442" x2="620" y2="490" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- transcript_raw -->
+  <g filter="url(#shadow)">
+    <rect x="290" y="496" width="660" height="98" rx="16" fill="#f2f2f2" stroke="#8a8a8a" stroke-width="3"/>
+  </g>
+  <rect x="348" y="520" width="38" height="50" rx="6" fill="#e2e2e2" stroke="#4a4a4a" stroke-width="3"/>
+  <g stroke="#4a4a4a" stroke-width="3" stroke-linecap="round">
+    <line x1="358" y1="534" x2="376" y2="534"/>
+    <line x1="358" y1="544" x2="376" y2="544"/>
+    <line x1="358" y1="554" x2="370" y2="554"/>
+  </g>
+  <text x="418" y="556" font-size="30" font-weight="700" fill="#4a4a4a">transcript_raw.txt</text>
+  <text x="700" y="556" font-size="26" fill="#4a4a4a">(verbatim ASR)</text>
+
+  <!-- Arrow -->
+  <line x1="620" y1="596" x2="620" y2="626" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- Normalisation -->
+  <g filter="url(#shadow)">
+    <rect x="205" y="630" width="830" height="90" rx="45" fill="#e9f7ef" stroke="#4faf7f" stroke-width="3"/>
+  </g>
+  <g transform="translate(292,675)" fill="#1f3550">
+    <circle r="26"/>
+    <g>
+      <rect x="-6" y="-38" width="12" height="14" rx="3"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(45)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(90)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(135)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(180)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(225)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(270)"/>
+      <rect x="-6" y="-38" width="12" height="14" rx="3" transform="rotate(315)"/>
+    </g>
+    <circle r="10" fill="#e9f7ef"/>
+  </g>
+  <text x="360" y="686" font-size="30" font-weight="700" fill="#102a1e">conservative medical-term normalisation</text>
+
+  <!-- Arrow -->
+  <line x1="620" y1="722" x2="620" y2="758" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- transcript -->
+  <g filter="url(#shadow)">
+    <rect x="370" y="764" width="500" height="88" rx="16" fill="#f2f2f2" stroke="#8a8a8a" stroke-width="3"/>
+  </g>
+  <rect x="430" y="784" width="36" height="48" rx="6" fill="#e2e2e2" stroke="#4a4a4a" stroke-width="3"/>
+  <g stroke="#4a4a4a" stroke-width="3" stroke-linecap="round">
+    <line x1="439" y1="797" x2="457" y2="797"/>
+    <line x1="439" y1="807" x2="457" y2="807"/>
+    <line x1="439" y1="817" x2="451" y2="817"/>
+  </g>
+  <text x="492" y="820" font-size="30" font-weight="700" fill="#4a4a4a">transcript.txt</text>
+
+  <!-- Arrow -->
+  <line x1="620" y1="854" x2="620" y2="894" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- Part B -->
+  <g filter="url(#shadow)">
+    <rect x="150" y="898" width="940" height="310" rx="18" fill="#f4effa" stroke="#6a4c93" stroke-width="3"/>
+  </g>
+  <path d="M168 898 H1072 A18 18 0 0 1 1090 916 V964 H150 V916 A18 18 0 0 1 168 898 Z" fill="#6a4c93"/>
+  <text x="620" y="942" text-anchor="middle" font-size="36" font-weight="700" fill="#ffffff">Part B: SOAP structuring (Gemini)</text>
+
+  <!-- Google G -->
+  <g transform="translate(205,1006) scale(2.75)">
+    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  </g>
+
+  <!-- Divider -->
+  <line x1="430" y1="984" x2="430" y2="1180" stroke="#6a4c93" stroke-width="2"/>
+
+  <!-- Part B bullets -->
+  <g fill="#1f2d3d" font-size="28">
+    <circle cx="472" cy="1013" r="5" fill="#1f2d3d"/>
+    <text x="492" y="1023">constrained system prompt</text>
+
+    <circle cx="472" cy="1060" r="5" fill="#1f2d3d"/>
+    <text x="492" y="1070">JSON response mode, temperature 0.2</text>
+
+    <circle cx="472" cy="1107" r="5" fill="#1f2d3d"/>
+    <text x="492" y="1117">schema + required-section validation</text>
+
+    <circle cx="472" cy="1154" r="5" fill="#1f2d3d"/>
+    <text x="492" y="1164">S/O cross-contamination audit (bonus)</text>
+  </g>
+
+  <!-- Arrow -->
+  <line x1="620" y1="1208" x2="620" y2="1258" stroke="#2f5b9e" stroke-width="8" marker-end="url(#arrow)"/>
+
+  <!-- Outputs -->
+  <g filter="url(#shadow)">
+    <rect x="235" y="1264" width="770" height="100" rx="18" fill="#e9f7ef" stroke="#4faf7f" stroke-width="3"/>
+  </g>
+  <rect x="310" y="1288" width="38" height="50" rx="6" fill="#e2e2e2" stroke="#1f2d3d" stroke-width="3"/>
+  <text x="329" y="1319" text-anchor="middle" font-size="18" font-weight="700" fill="#1f2d3d">{ }</text>
+  <text x="370" y="1322" font-size="30" font-weight="700" fill="#1f2d3d">soap_note.json</text>
+  <text x="625" y="1322" font-size="36" font-weight="700" fill="#1f2d3d">+</text>
+  <rect x="680" y="1288" width="38" height="50" rx="6" fill="#e2e2e2" stroke="#1f2d3d" stroke-width="3"/>
+  <g stroke="#1f2d3d" stroke-width="3" stroke-linecap="round">
+    <line x1="690" y1="1302" x2="708" y2="1302"/>
+    <line x1="690" y1="1312" x2="708" y2="1312"/>
+    <line x1="690" y1="1322" x2="702" y2="1322"/>
+  </g>
+  <text x="740" y="1322" font-size="30" font-weight="700" fill="#1f2d3d">soap_note.md</text>
+</svg>

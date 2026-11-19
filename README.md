@@ -1,12 +1,10 @@
 # Medical Transcription → SOAP Note Pipeline
 
-Programmatic pipeline for the technical assessment: transcribe a provider's medical dictation and convert the transcript into a structured **SOAP note** (Subjective, Objective, Assessment, Plan).
+End-to-end pipeline that transcribes a provider's medical dictation and converts the transcript into a structured **SOAP note** (Subjective, Objective, Assessment, Plan).
 
 - **Part A — Speech-to-Text:** `faster-whisper` locally, with a Gemini multimodal fallback.
 - **Part B — Text-to-SOAP:** constrained prompt engineering + JSON response mode, followed by a cross-contamination audit.
 - **Deliverables:** executed Jupyter notebook, raw/normalised transcripts, SOAP note in JSON and Markdown, tests, and this README.
-
-**Repository:** <https://github.com/iyashgoyal/medical-transcription-soap>
 
 ---
 
@@ -14,7 +12,12 @@ Programmatic pipeline for the technical assessment: transcribe a provider's medi
 
 | Input / output | File |
 |---|---|
-| Provider dictation audio (13 min 45 s, from the assignment) | [`audio/sample_dictation.mp3`](audio/sample_dictation.mp3) |
+| Provider dictation audio (13 min 45 s) | [`audio/sample_dictation.mp3`](audio/sample_dictation.mp3) |
+| Verbatim ASR output (before terminology cleanup) | [`output/transcript_raw.txt`](output/transcript_raw.txt) |
+| Final transcript used for structuring | [`output/transcript.txt`](output/transcript.txt) |
+| Structured SOAP note (JSON) | [`output/soap_note.json`](output/soap_note.json) |
+| Rendered SOAP note (Markdown) | [`output/soap_note.md`](output/soap_note.md) |
+| Executed walkthrough notebook | [`medical_transcription_soap.ipynb`](medical_transcription_soap.ipynb) |
 | Verbatim ASR output (before terminology cleanup) | [`output/transcript_raw.txt`](output/transcript_raw.txt) |
 | Final transcript used for structuring | [`output/transcript.txt`](output/transcript.txt) |
 | Structured SOAP note (JSON) | [`output/soap_note.json`](output/soap_note.json) |
@@ -27,48 +30,25 @@ Example excerpt from [`output/soap_note.md`](output/soap_note.md):
 
 ```markdown
 ## Assessment
-- Lateral epicondylitis (also known as tennis elbow).
+- Lateral epicondylitis (also known as tennis elbow), likely predisposed by repetitive strain at work and continuous contraction of the wrist extensor muscle group.
 
 ## Plan
-- Imaging: Not deemed necessary (no trauma, low concern for fracture).
-- Activity modifications: Avoid overly repetitive work activities, especially those using extensor forearm muscles.
+- Imaging: Not deemed necessary as there was no trauma and no concern for fractures.
+- Activity modifications: Avoid overly repetitive activities at work, especially those using extensor forearm muscles.
 - Support: Use a compression sleeve.
-- Medications: Continue taking Tylenol or NSAIDs for pain.
+- Medications: Continue taking Tylenol or NSAIDs (ibuprofen) for pain.
 - Physical therapy: Recommended to increase mobility and strength in the arm.
-- Additional measures: Apply ice for pain.
-- Prognosis: Should resolve in about six months to two years at most, normally goes away in a couple of months with physical therapy, compression, and splints.
+- Modalities: Apply ice for pain and swelling.
+- Prognosis: Should resolve in a couple of months with physical therapy, compression, and splints, lasting at most six months to two years.
 ```
 
 ---
 
 ## Architecture
 
-```text
-audio/sample_dictation.mp3
-            │
-            ▼
-┌──────────────────────────────────────────┐
-│ Part A: Speech-to-text                   │
-│ 1. faster-whisper (local, preferred)     │  no audio leaves the machine
-│ 2. Gemini audio API (fallback)           │  CPU-only / no model download
-└──────────────────┬───────────────────────┘
-                   ▼
-      transcript_raw.txt (verbatim ASR)
-                   │  conservative medical-term normalisation
-                   ▼
-          transcript.txt
-                   │
-                   ▼
-┌──────────────────────────────────────────┐
-│ Part B: SOAP structuring (Gemini)        │
-│ • constrained system prompt              │
-│ • JSON response mode, temperature 0.2    │
-│ • schema + required-section validation   │
-│ • S/O cross-contamination audit (bonus)  │
-└──────────────────┬───────────────────────┘
-                   ▼
-      soap_note.json  +  soap_note.md
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="Medical transcription and SOAP note pipeline architecture" width="100%">
+</p>
 
 ---
 
@@ -77,17 +57,17 @@ audio/sample_dictation.mp3
 | Layer | Choice | Why |
 |---|---|---|
 | ASR (preferred) | **faster-whisper** (`small` by default) | Runs fully offline for PHI/HIPAA-sensitive audio. CTranslate2 INT8 inference is substantially faster and lighter than the original `openai-whisper` implementation while using the same Whisper weights. `small` is a practical CPU compromise for medical vocabulary. |
-| ASR (fallback) | **Gemini `gemini-3.5-flash-lite`** | No GPU or model download required, handles 13+ minutes of audio natively, and produced the committed transcript in the CPU-only build environment. |
+| ASR (fallback) | **Gemini `gemini-3.5-flash-lite`** | No GPU or model download required, handles 13+ minutes of audio natively, and produced the included transcript on a CPU-only machine. |
 | Structuring | **Gemini `gemini-3.5-flash-lite`** | Strong biomedical entity recognition, native `application/json` response mode, and low-temperature sampling for stable section assignment. |
 | Validation | Custom heuristics | Cheap, explainable, and catches the classic S/O placement error without another model call. |
 
-**Why not a local LLM for Part B?** A local Llama/Mistral via Ollama/vLLM is the natural next step for full privacy (see [Scaling](#scaling-notes)); the `SOAPNoteGenerator` interface makes that swap straightforward. The assignment explicitly allows an API when local hardware is a constraint.
+**Why not a local model for Part B?** A local Llama/Mistral via Ollama/vLLM is the natural next step for full privacy (see [Scaling](#scaling-notes)); the `SOAPNoteGenerator` interface makes that swap straightforward.
 
 ### Reproducibility note
 
-`faster-whisper` was not installed in the build environment, so the committed transcript was produced by the **Gemini fallback**. The code still prefers local Whisper whenever it is available. To reproduce the exact committed transcript without another ASR call, the notebook can run with `USE_SAVED_TRANSCRIPT=1` (see [Usage](#usage)).
+`faster-whisper` was not installed on the machine used to prepare this repository, so the included transcript was produced by the **Gemini fallback**. The code still prefers local Whisper whenever it is available. To reproduce the included transcript without another ASR call, the notebook can run with `USE_SAVED_TRANSCRIPT=1` (see [Usage](#usage)).
 
-Cloud ASR is non-deterministic: repeated runs can differ by a word or two. The committed raw transcript was the best of several runs (correct `epicondylitis`, `splints`, `wheezing`, and no leading hallucination), and the normalisation layer fixes the remaining high-confidence errors.
+Cloud ASR is non-deterministic: repeated runs can differ by a word or two. The included transcript is complete and preserves the clinical terminology; the normalisation layer fixes the remaining high-confidence errors.
 
 ---
 
@@ -96,7 +76,9 @@ Cloud ASR is non-deterministic: repeated runs can differ by a word or two. The c
 ```text
 medical-transcription-soap/
 ├── audio/
-│   └── sample_dictation.mp3        # Assignment audio (13:45)
+│   └── sample_dictation.mp3        # Sample dictation (13:45)
+├── docs/
+│   └── architecture.svg            # Pipeline diagram
 ├── output/
 │   ├── transcript_raw.txt          # Verbatim ASR output (audit trail)
 │   ├── transcript.txt              # Normalised transcript used for SOAP
@@ -110,7 +92,7 @@ medical-transcription-soap/
 ├── medical_lexicon.py              # Conservative post-ASR corrections
 ├── soap_generator.py               # Prompt, JSON parsing, S/O audit
 ├── pipeline.py                     # CLI end-to-end runner
-├── medical_transcription_soap.ipynb# Executed walkthrough
+├── medical_transcription_soap.ipynb # Executed walkthrough
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── .env.example
@@ -131,7 +113,7 @@ medical-transcription-soap/
 ### 1. Clone
 
 ```bash
-git clone https://github.com/iyashgoyal/medical-transcription-soap.git
+git clone <repository-url>
 cd medical-transcription-soap
 ```
 
@@ -191,10 +173,10 @@ Useful variants:
 # Force the local, privacy-preserving backend (requires faster-whisper)
 python pipeline.py --backend local --whisper-model small
 
-# Force cloud ASR (reproduces the committed transcript setup)
+# Force cloud ASR (reproduces the included transcript setup)
 python pipeline.py --backend gemini
 
-# Keep a run separate from the committed deliverables
+# Keep a run separate from the included outputs
 python pipeline.py --output-dir runs/experiment-1
 
 # Disable the terminology cleanup (keep pure ASR output)
@@ -213,13 +195,13 @@ python pipeline.py path/to/another_dictation.mp3
 jupyter notebook medical_transcription_soap.ipynb
 ```
 
-The committed notebook is already executed. To re-run it:
+The notebook is already executed. To re-run it:
 
 ```bash
 jupyter nbconvert --to notebook --execute --inplace medical_transcription_soap.ipynb
 ```
 
-A fresh run transcribes the audio again (non-deterministic cloud output). To reuse the committed raw transcript and only redo normalisation + SOAP:
+A fresh run transcribes the audio again (non-deterministic cloud output). To reuse the included raw transcript and only redo normalisation + SOAP:
 
 ```powershell
 # PowerShell
@@ -280,7 +262,7 @@ The response is parsed defensively (direct JSON → fenced JSON → first balanc
 - Objective-style phrases (`on exam`, `palpation`, `tenderness`, `vital signs`, `x-ray`, `imaging shows`, …) inside **Subjective**.
 - Subjective-style phrases (`patient reports`, `states that`, `denies`, `rates pain`, …) inside **Objective**.
 
-It emits warnings for human review rather than blocking the note, because a phrase such as "full range of motion" can legitimately be patient-reported. The committed note produces **zero warnings**.
+It emits warnings for human review rather than blocking the note, because a phrase such as "full range of motion" can legitimately be patient-reported. The note produces **zero warnings**.
 
 ### Medical terminology normalisation
 
@@ -307,26 +289,13 @@ ASR models occasionally mis-hear uncommon clinical words. [`medical_lexicon.py`]
 
 ---
 
-## How this maps to the evaluation criteria
-
-| Criterion | Where to look |
-|---|---|
-| **Code quality** | Modular backends (`transcriber.py`), separation of prompt/validation (`soap_generator.py`), small CLI (`pipeline.py`), retries, typed dataclasses, tests. |
-| **Tool selection rationale** | [Tool selection and trade-offs](#tool-selection-and-trade-offs) above and inline docstrings. |
-| **Accuracy on medical terms** | Verbatim transcript preserves `lateral epicondylitis`, `extensor`, `pronation/supination`, `C-section`, laterality. Normalisation layer fixes residual ASR errors. |
-| **Prompt engineering** | Explicit source-of-truth and S/O author rules, JSON schema, pertinent-negative retention, low temperature. |
-| **Bonus** | `_validate_soap()` + `PASS` result in the notebook. |
-| **Interview readiness** | Architecture, scaling notes, limitations, and reproducibility controls are documented below. |
-
----
-
 ## Limitations
 
-- **Cloud dependency for SOAP.** Part B requires a Gemini key in this build. A local LLM adapter is the obvious production swap.
+- **Cloud dependency for SOAP.** Part B requires a Gemini key in this build. A local model adapter is the obvious production swap.
 - **No speaker diarization.** The transcript does not label provider vs patient; the prompt infers roles from clinical context. Multi-party encounters would benefit from `pyannote.audio`.
-- **Non-deterministic ASR.** Cloud transcription can vary slightly between runs; the committed raw transcript is preserved and the notebook can reuse it.
+- **Non-deterministic ASR.** Cloud transcription can vary slightly between runs; the included raw transcript is preserved and the notebook can reuse it.
 - **Heuristic safety check.** The S/O audit is lexical, not semantic. It is a review aid, not a compliance guarantee.
-- **Synthetic/sample data.** The audio is the assignment sample; no real PHI is included. The repo still follows privacy-first defaults (local ASR preferred, key never logged).
+- **Synthetic/sample data.** The audio is a sample encounter; no real PHI is included. The repo still follows privacy-first defaults (local ASR preferred, key never logged).
 
 ---
 

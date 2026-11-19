@@ -64,8 +64,8 @@ class SOAPNote:
 # ═══════════════════════════════════════════════════════════════
 
 SOAP_SYSTEM_PROMPT = """\
-You are a clinical documentation assistant. Convert the supplied medical
-dictation transcript into a concise, accurate SOAP note.
+Convert the supplied medical dictation transcript into a concise, accurate
+SOAP note.
 
 SOURCE-OF-TRUTH RULE
 Use only information stated in the transcript. Never invent vital signs, lab
