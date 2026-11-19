@@ -16,6 +16,11 @@ env/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
+# Tests / local runs
+.pytest_cache/
+runs/
+*.log
+
 # IDE
 .vscode/
 .idea/

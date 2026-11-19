@@ -1,261 +1,328 @@
 """
-soap_generator.py - SOAP Note Generation Module
+soap_generator.py - Convert a medical transcript into a structured SOAP note.
 
-Takes a medical dictation transcript and structures it into a
-SOAP (Subjective, Objective, Assessment, Plan) note using
-Google Gemini's generative AI with carefully engineered prompts.
+The generator uses Gemini with a constrained system prompt and JSON response
+mode.  It also runs a lightweight cross-contamination check that flags
+patient-reported language in the Objective section (and clinician-observed
+language in Subjective).
 
-Features:
-• Structured JSON output with schema enforcement
-• Cross-contamination validation (S vs O separation)
-• Medical terminology preservation
-• Markdown-formatted output generation
+Design notes
+------------
+* Temperature is low (default 0.2) to keep categorisation reproducible.
+* The prompt forbids inventing findings; the transcript is the only source.
+* Output is validated after parsing so malformed model output cannot silently
+  produce an empty note.
 """
+
+from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, asdict
+import re
+from dataclasses import asdict, dataclass
 
 logger = logging.getLogger(__name__)
 
+_REQUIRED_KEYS = ("subjective", "objective", "assessment", "plan")
+
 
 # ═══════════════════════════════════════════════════════════════
-# Data Models
+# Data model
 # ═══════════════════════════════════════════════════════════════
 
 @dataclass
 class SOAPNote:
-    """Structured SOAP note with all four sections."""
+    """Structured SOAP note with exactly the four standard sections."""
 
     subjective: str
     objective: str
     assessment: str
     plan: str
 
-    def to_dict(self) -> dict:
-        """Convert to dictionary."""
+    def to_dict(self) -> dict[str, str]:
         return asdict(self)
 
     def to_json(self, indent: int = 2) -> str:
-        """Serialize to formatted JSON string."""
-        return json.dumps(self.to_dict(), indent=indent)
+        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     def to_markdown(self) -> str:
-        """Render as a formatted Markdown document."""
         return (
             "# SOAP Note\n\n"
             "## Subjective\n"
-            f"{self.subjective}\n\n"
+            f"{self.subjective.strip()}\n\n"
             "## Objective\n"
-            f"{self.objective}\n\n"
+            f"{self.objective.strip()}\n\n"
             "## Assessment\n"
-            f"{self.assessment}\n\n"
+            f"{self.assessment.strip()}\n\n"
             "## Plan\n"
-            f"{self.plan}\n"
+            f"{self.plan.strip()}\n"
         )
 
 
 # ═══════════════════════════════════════════════════════════════
-# Prompt Engineering
+# Prompt
 # ═══════════════════════════════════════════════════════════════
 
 SOAP_SYSTEM_PROMPT = """\
-You are a highly skilled medical scribe AI. Your job is to take a raw \
-medical dictation transcript and produce a concise, accurate, and \
-well-structured SOAP note.
+You are a clinical documentation assistant. Convert the supplied medical
+dictation transcript into a concise, accurate SOAP note.
 
-RULES:
-1. **Subjective (S):** Only include information the PATIENT reported — \
-   symptoms, history, feelings, what makes it better/worse, duration, \
-   severity (pain scale), medications tried, and relevant social/family history. \
-   Do NOT include anything the doctor observed or measured.
+SOURCE-OF-TRUTH RULE
+Use only information stated in the transcript. Never invent vital signs, lab
+values, imaging results, medications, dosages, diagnoses, or follow-up
+intervals. Preserve laterality (left/right), numbers, units, and time frames
+exactly. If a section has no supporting information, write
+"Not documented in the provided dictation." rather than guessing.
 
-2. **Objective (O):** Only include information the DOCTOR observed, measured, \
-   or tested — physical exam findings, vital signs, inspection results, \
-   palpation, range of motion tests, and any imaging or lab results. \
-   Do NOT include patient-reported symptoms.
+SECTION DEFINITIONS
+1. Subjective (S): What the PATIENT reports - chief complaint, history of
+   present illness, symptom quality/severity/onset/duration, aggravating and
+   relieving factors, pertinent negatives, past medical/surgical history,
+   medications, allergies, social and family history.
+   Do NOT put clinician examination findings or test results here.
 
-3. **Assessment (A):** Provide the diagnosis or differential diagnosis \
-   based on the subjective and objective findings. Include the medical \
-   term and any common name.
+2. Objective (O): What the CLINICIAN observes, measures, or tests - general
+   appearance, inspection, palpation, range-of-motion and strength testing,
+   vital signs, imaging, and laboratory results. In a telehealth encounter
+   where the clinician guides the patient through a self-examination, record
+   the stated findings as examination findings (for example, "tenderness to
+   palpation over the lateral epicondyle").
+   Do NOT put patient complaints, feelings, or history here.
 
-4. **Plan (P):** Include the treatment plan — activity modifications, \
-   medications, therapies, follow-up instructions, referrals, and expected \
-   prognosis/timeline.
+3. Assessment (A): The diagnosis or differential diagnosis supported by S and
+   O. Give the medical term and, where helpful, the common name. Do not add
+   diagnoses that the transcript does not support.
 
-FORMATTING:
-- Use concise medical documentation style (abbreviations are OK)
-- Use bullet points for multiple items within a section
-- Preserve medical terminology exactly
-- Include relevant negatives (pertinent negative findings)
+4. Plan (P): Treatment and follow-up - activity modification, medications,
+   bracing/support, physical therapy, imaging decisions, patient education,
+   prognosis, and follow-up. Include only what is stated or directly implied
+   by the clinician in the transcript.
 
-OUTPUT:
-Return ONLY a valid JSON object with keys: "subjective", "objective", \
-"assessment", "plan". Each value is a string containing the section content.
+STYLE
+- Concise clinical documentation style; abbreviations are acceptable.
+- Use short bullet points for multiple findings.
+- Retain clinically relevant negatives (for example, no numbness, no trauma).
+- Do not add a preamble, disclaimer, or commentary outside the JSON.
+
+OUTPUT FORMAT
+Return only a valid JSON object with exactly these string keys:
+"subjective", "objective", "assessment", "plan".
+
+FORMATTING INSIDE EACH STRING
+- Use newline-separated "- " bullet points, one clinical finding or action per
+  bullet, not a dense paragraph.
+- Add a short label where it helps scanning (for example "- Onset:",
+  "- Aggravating factors:", "- Pertinent negatives:", "- Imaging:").
+- Keep every bullet traceable to the transcript.
 """
 
 
 # ═══════════════════════════════════════════════════════════════
-# SOAP Note Generator
+# Generator
 # ═══════════════════════════════════════════════════════════════
 
 class SOAPNoteGenerator:
-    """
-    Generates structured SOAP notes from medical transcripts
-    using Google Gemini API with prompt engineering.
-    """
+    """Generate a validated SOAP note from a transcript using Gemini."""
 
-    def __init__(self, api_key: str, model: str = "gemini-3.5-flash-lite"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-3.5-flash-lite",
+        temperature: float = 0.2,
+        max_retries: int = 3,
+    ):
         from google import genai
 
         if not api_key:
             raise ValueError(
-                "GEMINI_API_KEY is required. Set it as an environment variable."
+                "GEMINI_API_KEY is required for SOAP generation. "
+                "Set it as an environment variable."
             )
 
         self._client = genai.Client(api_key=api_key)
         self._model = model
+        self._temperature = temperature
+        self._max_retries = max_retries
+        self.last_validation_issues: list[str] = []
+
+    @property
+    def name(self) -> str:
+        return f"Gemini ({self._model})"
 
     def generate(self, transcript: str) -> SOAPNote:
         """
-        Generate a SOAP note from a medical dictation transcript.
+        Generate and validate a SOAP note.
 
         Args:
-            transcript: The verbatim transcript text.
+            transcript: Verbatim transcript from Part A.
 
         Returns:
-            A SOAPNote dataclass with S, O, A, P sections.
+            A populated :class:`SOAPNote`.
+
+        Raises:
+            ValueError: if the transcript is empty or the model response cannot
+                be parsed into the four required sections.
         """
         from google.genai import types
 
-        logger.info("Generating SOAP note using %s ...", self._model)
+        from transcriber import call_with_retries
+
+        if not transcript or not transcript.strip():
+            raise ValueError("Cannot generate a SOAP note from an empty transcript")
+
+        logger.info("Generating SOAP note with %s...", self.name)
 
         user_prompt = (
-            f"Transcript of a medical dictation:\n\n"
-            f'"""\n{transcript}\n"""\n\n'
-            f"Generate a structured SOAP note from this transcript. "
-            f"Return ONLY the JSON object — no markdown fences, no explanation."
+            "Medical dictation transcript:\n\n"
+            f'"""\n{transcript.strip()}\n"""\n\n'
+            "Create the SOAP note. Return only the JSON object."
         )
 
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SOAP_SYSTEM_PROMPT,
-                temperature=0.2,
-                response_mime_type="application/json",
-            ),
+        def _call():
+            return self._client.models.generate_content(
+                model=self._model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SOAP_SYSTEM_PROMPT,
+                    temperature=self._temperature,
+                    response_mime_type="application/json",
+                ),
+            )
+
+        response = call_with_retries(
+            _call,
+            description="SOAP generation",
+            max_retries=self._max_retries,
         )
 
-        # Parse the JSON response
-        raw_text = response.text.strip()
-        logger.debug("Raw LLM response:\n%s", raw_text)
+        raw_text = (response.text or "").strip()
+        logger.debug("Raw model response:\n%s", raw_text)
 
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # The model sometimes returns multiple JSON objects or
-            # wraps JSON in markdown fences. Try to extract the first
-            # valid JSON object.
-            logger.warning("Direct JSON parse failed — attempting extraction")
-            data = self._extract_json(raw_text)
-
+        data = self._parse_json(raw_text)
         if not data:
-            raise ValueError("Could not parse any JSON from the LLM response")
+            raise ValueError("Could not parse a JSON object from the model response")
 
-        soap_note = SOAPNote(
-            subjective=data.get("subjective", ""),
-            objective=data.get("objective", ""),
-            assessment=data.get("assessment", ""),
-            plan=data.get("plan", ""),
+        missing = [key for key in _REQUIRED_KEYS if not str(data.get(key, "")).strip()]
+        if missing:
+            raise ValueError(
+                "Model response is missing required SOAP sections: "
+                + ", ".join(missing)
+            )
+
+        note = SOAPNote(
+            subjective=str(data["subjective"]).strip(),
+            objective=str(data["objective"]).strip(),
+            assessment=str(data["assessment"]).strip(),
+            plan=str(data["plan"]).strip(),
         )
 
-        # Validate cross-contamination
-        issues = self._validate_soap(soap_note)
-        if issues:
-            logger.warning("SOAP validation issues found:")
-            for issue in issues:
-                logger.warning("  ⚠ %s", issue)
+        self.last_validation_issues = self._validate_soap(note)
+        if self.last_validation_issues:
+            logger.warning("SOAP cross-contamination warnings:")
+            for issue in self.last_validation_issues:
+                logger.warning("  - %s", issue)
+        else:
+            logger.info("SOAP validation passed: no cross-contamination detected.")
 
         logger.info("SOAP note generation complete.")
-        return soap_note
+        return note
+
+    # ── Parsing helpers ──────────────────────────────────────
+
+    @classmethod
+    def _parse_json(cls, text: str) -> dict | None:
+        """Parse JSON, tolerating markdown fences or surrounding prose."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("Direct JSON parsing failed - attempting extraction")
+            return cls._extract_json(text)
 
     @staticmethod
     def _extract_json(text: str) -> dict | None:
         """
-        Extract the first valid JSON object from text that may contain
-        multiple objects, markdown fences, or extra content.
+        Extract the first balanced ``{...}`` object from noisy model output.
+
+        This handles stray markdown fences and occasional trailing commentary
+        that some models add despite JSON response mode.
         """
-        import re
+        cleaned = re.sub(r"```(?:json)?\s*", "", text).replace("```", "")
 
-        # Strip markdown code fences if present
-        text = re.sub(r"```(?:json)?\s*", "", text)
-
-        # Try to find and parse the first { ... } block
         depth = 0
-        start = None
-        for i, ch in enumerate(text):
-            if ch == "{":
+        start: int | None = None
+        in_string = False
+        escaped = False
+
+        for index, char in enumerate(cleaned):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+            elif char == "{":
                 if depth == 0:
-                    start = i
+                    start = index
                 depth += 1
-            elif ch == "}":
+            elif char == "}":
                 depth -= 1
                 if depth == 0 and start is not None:
                     try:
-                        return json.loads(text[start : i + 1])
+                        return json.loads(cleaned[start : index + 1])
                     except json.JSONDecodeError:
                         start = None
-                        continue
+
         return None
+
+    # ── Bonus: cross-contamination check ─────────────────────
 
     @staticmethod
     def _validate_soap(note: SOAPNote) -> list[str]:
         """
-        BONUS: Cross-contamination check.
+        Flag likely placement errors between Subjective and Objective.
 
-        Verifies that Subjective information (patient-reported) doesn't
-        appear in the Objective section (doctor-measured), and vice versa.
-
-        Returns a list of warning messages (empty if no issues).
+        This is a heuristic audit, not a semantic parser: it produces warnings
+        for a human reviewer rather than blocking the note.
         """
-        issues = []
+        issues: list[str] = []
 
-        # Subjective markers — patient-reported language
-        subjective_markers = [
+        # Phrases that almost always indicate patient-reported content.
+        subjective_markers = (
             "patient reports", "patient states", "patient says",
             "patient complains", "patient denies", "patient feels",
-            "he reports", "she reports", "he states", "she states",
-            "he says", "she says", "he denies", "she denies",
-            "rates the pain", "rates pain", "describes",
-            "has been feeling", "has noticed",
-        ]
+            "patient describes", "reports that", "states that",
+            "endorses", "denies", "rates pain", "rates the pain",
+            "pain is a", "pain score",
+        )
 
-        # Objective markers — doctor-observed/measured language
-        objective_markers = [
-            "on exam", "on examination", "on inspection",
-            "palpation reveals", "upon palpation",
-            "range of motion", "rom ", "x-ray", "xray",
-            "mri ", "ct scan", "lab results", "labs show",
-            "vital signs", "blood pressure", "bp ", "heart rate",
-            "temperature", "tenderness on", "swelling noted",
-            "positive for", "negative for",
-        ]
+        # Phrases that almost always indicate clinician-observed content.
+        objective_markers = (
+            "on exam", "on examination", "physical exam", "inspection reveals",
+            "palpation", "tenderness", "range of motion", "strength testing",
+            "vital signs", "blood pressure", "heart rate", "temperature",
+            "x-ray", "xray", "mri", "ct scan", "ultrasound", "imaging shows",
+            "labs show", "laboratory", "auscultation", "no erythema",
+            "no swelling", "no deformity",
+        )
 
-        # Check for objective language in the Subjective section
-        subj_lower = note.subjective.lower()
+        subjective_lower = note.subjective.lower()
+        objective_lower = note.objective.lower()
+
         for marker in objective_markers:
-            if marker in subj_lower:
+            if marker in subjective_lower:
                 issues.append(
-                    f"Possible objective data in Subjective: found '{marker}'"
+                    f"Objective-style language in Subjective: '{marker}'"
                 )
 
-        # Check for subjective language in the Objective section
-        obj_lower = note.objective.lower()
         for marker in subjective_markers:
-            if marker in obj_lower:
+            if marker in objective_lower:
                 issues.append(
-                    f"Possible subjective data in Objective: found '{marker}'"
+                    f"Subjective-style language in Objective: '{marker}'"
                 )
 
         return issues

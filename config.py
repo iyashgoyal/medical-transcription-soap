@@ -1,5 +1,9 @@
 """
-Configuration settings for the Medical Transcription & SOAP Note Pipeline.
+config.py - Central configuration for the Medical Transcription & SOAP Pipeline.
+
+Every setting can be overridden with an environment variable, which keeps the
+code deployable without edits while still providing sensible defaults for the
+assignment's sample dictation.
 """
 
 import os
@@ -10,44 +14,46 @@ from pathlib import Path
 # ──────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent
 AUDIO_DIR = PROJECT_ROOT / "audio"
-OUTPUT_DIR = PROJECT_ROOT / "output"
 
-# Default audio file
+# SOAP_OUTPUT_DIR lets you write a run to another folder without touching the
+# committed deliverables in output/ (useful for tests and repeats).
+OUTPUT_DIR = Path(os.environ.get("SOAP_OUTPUT_DIR", PROJECT_ROOT / "output"))
+
 DEFAULT_AUDIO_FILE = AUDIO_DIR / "sample_dictation.mp3"
 
-# Output files
 TRANSCRIPT_OUTPUT = OUTPUT_DIR / "transcript.txt"
+TRANSCRIPT_RAW_OUTPUT = OUTPUT_DIR / "transcript_raw.txt"
 SOAP_NOTE_OUTPUT = OUTPUT_DIR / "soap_note.json"
 SOAP_NOTE_MD_OUTPUT = OUTPUT_DIR / "soap_note.md"
 
 # ──────────────────────────────────────────────────────────────
-# Whisper (Local Speech-to-Text) Settings
+# Local Whisper (Speech-to-Text) settings
 # ──────────────────────────────────────────────────────────────
-# Model sizes: tiny, base, small, medium, large-v3
-# Larger models = better accuracy (esp. medical terms) but slower
-WHISPER_MODEL_SIZE = "base"
+# Model sizes: tiny, base, small, medium, large-v3.
+# "small" is a good CPU compromise: noticeably better on medical vocabulary
+# than "base" while remaining practical for 10-15 minute dictations.
+WHISPER_MODEL_SIZE = os.environ.get("WHISPER_MODEL_SIZE", "small")
 
-# Computation settings
-# "cpu" for CPU-only machines, "cuda" for NVIDIA GPU, "auto" for auto-detect
-WHISPER_DEVICE = "auto"
+# "cpu", "cuda", or "auto" (detect via CTranslate2).
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 
-# Beam size for decoding (higher = more accurate but slower)
-WHISPER_BEAM_SIZE = 5
+# Beam search width. Higher = more accurate, slower.
+WHISPER_BEAM_SIZE = int(os.environ.get("WHISPER_BEAM_SIZE", "5"))
 
-# Language (None = auto-detect, "en" = English)
-WHISPER_LANGUAGE = "en"
+# Language hint. "en" avoids accidental language switching on short clips.
+WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "en") or None
 
 # ──────────────────────────────────────────────────────────────
-# Gemini API (Cloud LLM) Settings
+# Gemini (cloud fallback + SOAP structuring) settings
 # ──────────────────────────────────────────────────────────────
-# API key from environment variable
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_TRANSCRIPTION_MODEL = os.environ.get(
+    "GEMINI_TRANSCRIPTION_MODEL", GEMINI_MODEL
+)
 
-# Model for SOAP note generation
-GEMINI_MODEL = "gemini-3.5-flash-lite"
+# Low temperature keeps the note reproducible and limits creative additions.
+GEMINI_TEMPERATURE = float(os.environ.get("GEMINI_TEMPERATURE", "0.2"))
 
-# Model for audio transcription (fallback if Whisper is unavailable)
-GEMINI_TRANSCRIPTION_MODEL = "gemini-3.5-flash-lite"
-
-# Temperature for SOAP note generation (lower = more deterministic)
-GEMINI_TEMPERATURE = 0.2
+# Retry policy for transient API/network failures.
+API_MAX_RETRIES = int(os.environ.get("API_MAX_RETRIES", "3"))
